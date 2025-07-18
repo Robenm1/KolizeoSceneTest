@@ -8,6 +8,9 @@ public class TransitionManager : MonoBehaviour
     private int transitionCount = 0;
     public static TransitionManager Instance;
 
+    [SerializeField, Header("Transition Button")]
+    private Button transitionButton;
+
     [SerializeField, Header("Animation Settings")]
     private Animator animator;
     [SerializeField, Tooltip("The name of the animations parameters in the animator controller")]
@@ -62,18 +65,18 @@ public class TransitionManager : MonoBehaviour
             return;
         }
 
-        // Check if scene exists in build settings
         if (Application.CanStreamedLevelBeLoaded(targetScene))
         {
             nextSceneName = targetScene;
             hasStartedLoading = false;
 
+            // Automatically find and disable the first active button under the EventSystem
+            DisableActiveButton();
+
             int triggerIndex = Random.Range(0, transitionTriggers.Length);
             string trigger = transitionTriggers[triggerIndex];
 
-            // Play corresponding sound effect
             PlayTransitionSound(triggerIndex);
-
             animator.SetTrigger(trigger);
         }
         else
@@ -81,6 +84,8 @@ public class TransitionManager : MonoBehaviour
             Debug.LogError($"Scene '{targetScene}' not found in build settings");
         }
     }
+
+
 
     // Plays the transition sound effect
     private void PlayTransitionSound(int triggerIndex)
@@ -124,6 +129,9 @@ public class TransitionManager : MonoBehaviour
         }
 
         SceneManager.LoadScene(nextSceneName);
+        
+        if (transitionButton)
+            transitionButton.interactable = true;
     }
 
 
@@ -163,4 +171,19 @@ public class TransitionManager : MonoBehaviour
             SceneManager.LoadScene(nextSceneName);
         }
     }
+
+    private void DisableActiveButton()
+    {
+        GameObject selectedObj = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+
+        if (selectedObj != null)
+        {
+            var button = selectedObj.GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = false;
+            }
+        }
+    }
+
 }
