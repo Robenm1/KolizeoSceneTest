@@ -5,18 +5,30 @@ using UnityEngine.UI;
 
 public class TransitionManager : MonoBehaviour
 {
-
-    public GameObject loadingBarGO;   
-    public Slider loadingSlider;
+    private int transitionCount = 0;
     public static TransitionManager Instance;
 
-    public Animator animator;
-    public string[] transitionTriggers = { "Transition1", "Transition2", "Transition3" };
+    [SerializeField, Header("Animation Settings")]
+    private Animator animator;
+    [SerializeField, Tooltip("The name of the animations parameters in the animator controller")]
+    private string[] transitionTriggers = { "Transition1", "Transition2", "Transition3" };
 
-    public bool enableFakeLoading = true;
-    public float fakeLoadingDuration = 3f;
-    [Range(0f, 1f)]
-    public float fakeLoadingChance = 0.33f;
+    [SerializeField, Header("Audio Settings")]
+    private AudioSource audioSource;
+    [SerializeField, Tooltip("Audio clips that match the transition animations (same order as triggers)")]
+    private AudioClip[] transitionSounds;
+
+    [SerializeField, Header("Loading Bar")]
+    private GameObject loadingBarGO;
+    [SerializeField]
+    private Slider loadingSlider;
+
+    [SerializeField, Header("Fake Loading Settings")]
+    private bool enableFakeLoading = true;
+    [SerializeField]
+    private float fakeLoadingDuration = 3f;
+    [SerializeField, Range(0f, 1f)]
+    private float fakeLoadingChance = 0.33f;
 
     private string nextSceneName;
     private bool hasStartedLoading = false;
@@ -31,6 +43,9 @@ public class TransitionManager : MonoBehaviour
 
             if (animator == null)
                 animator = GetComponent<Animator>();
+
+            if (audioSource == null)
+                audioSource = GetComponent<AudioSource>();
         }
         else
         {
@@ -41,11 +56,40 @@ public class TransitionManager : MonoBehaviour
     // Called when a scene transition is requested
     public void StartSceneTransition(string targetScene)
     {
-        nextSceneName = targetScene;
-        hasStartedLoading = false;
+        if (string.IsNullOrEmpty(targetScene))
+        {
+            Debug.LogError("Target scene name is null or empty");
+            return;
+        }
 
-        string trigger = transitionTriggers[Random.Range(0, transitionTriggers.Length)];
-        animator.SetTrigger(trigger);
+        // Check if scene exists in build settings
+        if (Application.CanStreamedLevelBeLoaded(targetScene))
+        {
+            nextSceneName = targetScene;
+            hasStartedLoading = false;
+
+            int triggerIndex = Random.Range(0, transitionTriggers.Length);
+            string trigger = transitionTriggers[triggerIndex];
+
+            // Play corresponding sound effect
+            PlayTransitionSound(triggerIndex);
+
+            animator.SetTrigger(trigger);
+        }
+        else
+        {
+            Debug.LogError($"Scene '{targetScene}' not found in build settings");
+        }
+    }
+
+    // Plays the transition sound effect
+    private void PlayTransitionSound(int triggerIndex)
+    {
+        if (audioSource != null && transitionSounds != null &&
+            triggerIndex < transitionSounds.Length && transitionSounds[triggerIndex] != null)
+        {
+            audioSource.PlayOneShot(transitionSounds[triggerIndex]);
+        }
     }
 
     // Called from an animation event to begin loading the new scene
@@ -60,36 +104,22 @@ public class TransitionManager : MonoBehaviour
     // Coroutine that handles optional loading delay before switching scenes
     private IEnumerator LoadSceneCoroutine()
     {
-        if (enableFakeLoading && Random.value < fakeLoadingChance)
+        transitionCount++; // Increment transition counter
+
+        // Every 3rd transition has a fake loading delay
+        bool shouldDelay = enableFakeLoading && (transitionCount % 3 == 0);
+
+        if (shouldDelay)
         {
             // Pause the transition animation
-            if (animator != null)
+            if (animator)
                 animator.speed = 0f;
 
-            if (loadingBarGO != null)
-                loadingBarGO.SetActive(true);
+            // Show loading bar and wait
+            yield return StartCoroutine(ShowLoadingBarCoroutine());
 
-                 loadingBarGO.SetActive(true);
-                 loadingBarGO.transform.SetAsLastSibling();
-
-
-            float timer = 0f;
-            while (timer < fakeLoadingDuration)
-            {
-                timer += Time.deltaTime;
-
-                // Fill loading bar in real time
-                if (loadingSlider != null)
-                    loadingSlider.value = timer / fakeLoadingDuration;
-
-                yield return null;
-            }
-
-            if (loadingBarGO != null)
-                loadingBarGO.SetActive(false);
-
-            // Resume the transition animation
-            if (animator != null)
+            // Resume animation after delay
+            if (animator)
                 animator.speed = 1f;
         }
 
@@ -97,11 +127,40 @@ public class TransitionManager : MonoBehaviour
     }
 
 
-    // Pause the transition on fake delay
-    public void TriggerDelayCheck()
+    // Handles displaying and updating the loading bar
+    private IEnumerator ShowLoadingBarCoroutine()
     {
-        Debug.Log("TriggerDelayCheck called from animation");
+        if (loadingBarGO)
+        {
+            loadingBarGO.SetActive(true);
+            loadingBarGO.transform.SetAsLastSibling(); 
+        }
 
+        float timer = 0f;
+        while (timer < fakeLoadingDuration)
+        {
+            timer += Time.unscaledDeltaTime; 
+
+            if (loadingSlider)
+                loadingSlider.value = timer / fakeLoadingDuration;
+
+            yield return null;
+        }
+
+        if (loadingBarGO)
+            loadingBarGO.SetActive(false);
     }
 
+
+    public void TriggerDelayCheck()
+    {
+        if (enableFakeLoading && Random.value < fakeLoadingChance)
+        {
+            StartCoroutine(LoadSceneCoroutine());
+        }
+        else
+        {
+            SceneManager.LoadScene(nextSceneName);
+        }
+    }
 }
